@@ -10,7 +10,15 @@ class Purchase extends Model
 
     use HasFactory;
 
-    protected $fillable = ['user_id', 'course_id', 'payment_method', 'price_paid'];
+    protected $fillable = [
+    'reference_id',
+    'user_id',
+    'course_id',
+    'payment_method',
+    'price_paid',
+    'status',
+    'snap_token'
+];
 
     public function course() {
         return $this->belongsTo(Course::class);
