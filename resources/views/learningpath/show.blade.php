@@ -22,33 +22,7 @@
                 <div>
                     <h4 class="text-xl text-center font-bold mb-6">Detail Pembayaran</h4>
 
-                    {{-- Select Metode Pembayaran --}}
-                    <div class="mb-4">
-                        <label for="payment_method" class="block text-gray-700 font-semibold mb-2">Metode Pembayaran</label>
-                        <select id="payment_method" name="payment_method"
-                            class="w-full border rounded p-2 focus:ring focus:ring-teal-500">
-                            <option value="">-- Pilih Metode Pembayaran --</option>
-                            <option value="bank_transfer">Transfer Bank</option>
-                            <option value="e_wallet">E-Wallet</option>
-                            <option value="qris">QRIS</option>
-                        </select>
-                    </div>
 
-                    <div id="bank_options" class="hidden mb-4">
-                        <label for="bank" class="block text-gray-700 font-semibold mb-2">Pilih Bank</label>
-                        <select id="bank" name="bank" class="w-full border rounded p-2">
-                            <option value="BNI">BNI</option>
-                            <option value="BRI">BRI</option>
-                        </select>
-                    </div>
-
-                    <div id="ewallet_options" class="hidden mb-4">
-                        <label for="ewallet" class="block text-gray-700 font-semibold mb-2">Pilih E-Wallet</label>
-                        <select id="ewallet" name="ewallet" class="w-full border rounded p-2">
-                            <option value="DANA">DANA</option>
-                            <option value="GoPay">GoPay</option>
-                        </select>
-                    </div>
 
                     {{-- Harga dan Diskon --}}
                     <div class="mb-3 font-semibold flex justify-between text-base">
@@ -91,90 +65,92 @@
         </div>
     </div>
 
+    <script type="text/javascript"
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key="{{ config('services.midtrans.client_key') }}">
+    </script>
+
     {{-- Script --}}
     <script>
-        document.getElementById('payment_method').addEventListener('change', function() {
-            const selected = this.value;
-            document.getElementById('bank_options').classList.add('hidden');
-            document.getElementById('ewallet_options').classList.add('hidden');
 
-            if (selected === 'bank_transfer') {
-                document.getElementById('bank_options').classList.remove('hidden');
-            } else if (selected === 'e_wallet') {
-                document.getElementById('ewallet_options').classList.remove('hidden');
-            }
-        });
 
         function bayarSekarang(courseId) {
             @guest
-            window.location.href = "{{ route('login') }}";
-        @else
-            const paymentMethod = document.getElementById('payment_method').value;
-
-            if (!paymentMethod) {
+                window.location.href = "{{ route('login') }}";
+            @else
                 Swal.fire({
-                    icon: 'warning',
-                    title: 'Pilih Metode Pembayaran!',
-                    text: 'Silakan pilih metode pembayaran terlebih dahulu.',
-                });
-                return;
-            }
-
-            Swal.fire({
-                title: 'Mohon Tunggu...',
-                text: 'Proses pembayaran sedang diproses',
-                icon: 'info',
-                showConfirmButton: false,
-                timer: 2000,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            }).then(() => {
-                // Setelah loading selesai, tampilkan alert sukses dulu
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Pembayaran Berhasil!',
-                    text: 'Anda akan diarahkan ke Dashboard My Course',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
-                    // Baru submit form
-                    const form = document.createElement('form');
-                    form.method = 'POST';
-                    form.action = '/checkout/' + courseId;
-
-                    const csrfToken = document.createElement('input');
-                    csrfToken.type = 'hidden';
-                    csrfToken.name = '_token';
-                    csrfToken.value = '{{ csrf_token() }}';
-                    form.appendChild(csrfToken);
-
-                    if (!paymentMethod || paymentMethod.trim() === '') {
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Metode Pembayaran Kosong',
-                            text: 'Silakan pilih metode pembayaran terlebih dahulu.',
-                        });
-                        return;
+                    title: 'Memproses Transaksi...',
+                    text: 'Harap tunggu sebentar...',
+                    icon: 'info',
+                    showConfirmButton: false,
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
                     }
-                    const inputMethod = document.createElement('input');
-                    inputMethod.type = 'hidden';
-                    inputMethod.name = 'payment_method';
-                    inputMethod.value = paymentMethod.trim();
-                    form.appendChild(inputMethod);
-
-
-                    const inputPrice = document.createElement('input');
-                    inputPrice.type = 'hidden';
-                    inputPrice.name = 'price_paid';
-                    inputPrice.value = '{{ $finalPrice }}';
-                    form.appendChild(inputPrice);
-
-                    document.body.appendChild(form);
-                    form.submit();
                 });
-            });
-        @endguest
+
+                // Kirim request ke backend untuk mendapatkan snap_token
+                fetch('/checkout/' + courseId, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Gagal memproses transaksi.');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    Swal.close();
+                    
+                    // Trigger Snap Modal
+                    window.snap.pay(data.snap_token, {
+                        onSuccess: function(result) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Pembayaran Sukses!',
+                                text: 'Terima kasih telah bergabung di kelas!',
+                                timer: 3000,
+                                showConfirmButton: false
+                            }).then(() => {
+                                window.location.href = "{{ route('my-course') }}";
+                            });
+                        },
+                        onPending: function(result) {
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Pembayaran Diproses',
+                                text: 'Silakan selesaikan pembayaran Anda sesuai instruksi.',
+                            });
+                        },
+                        onError: function(result) {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Pembayaran Gagal',
+                                text: 'Silakan coba kembali.',
+                            });
+                        },
+                        onClose: function() {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Transaksi Ditutup',
+                                text: 'Anda menutup popup pembayaran sebelum menyelesaikannya.',
+                            });
+                        }
+                    });
+                })
+                .catch(error => {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Kesalahan Sistem',
+                        text: error.message || 'Terjadi kesalahan internal. Coba lagi nanti.',
+                    });
+                });
+            @endguest
         }
     </script>
+
 @endsection

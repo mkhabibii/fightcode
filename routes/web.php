@@ -14,6 +14,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\TestimoniController;
+use App\Http\Controllers\PaymentCallbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
@@ -79,12 +80,13 @@ Route::get('auth/google', [GoogleController::class, 'redirectToGoogle'])->name('
 Route::get('auth/google/callback', [GoogleController::class, 'googleCallback']);
 
 
-Route::get('/register', [RegisterController::class, 'show'])->name('register'); //? ini manggil method show di RegisteController
+Route::get('/register', [RegisterController::class, 'show'])->name('register'); // manggil method show di RegisteController
 Route::post('/register', [RegisterController::class, 'register']);
 
 Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-
+// Webhook Notification (Harus bisa diakses publik oleh Midtrans)
+Route::post('/payment/callback', [PaymentCallbackController::class, 'handle'])->name('payment.callback');
 

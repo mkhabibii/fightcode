@@ -25,4 +25,5 @@ yarn-error.log
 # Debug & Local Documentation files
 *.stackdump
 impl.md
+deploy.md
 

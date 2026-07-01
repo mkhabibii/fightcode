@@ -35,6 +35,7 @@ class CourseController extends Controller
         if (Auth::check()) {
             $isPurchased = Purchase::where('user_id', Auth::id())
                 ->where('course_id', $id)
+                ->where('status', 'success')
                 ->exists();
         }
 
@@ -42,4 +43,6 @@ class CourseController extends Controller
     }
     
 }
+
+
 

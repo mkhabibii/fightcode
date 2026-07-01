@@ -2,51 +2,115 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Course;
 use App\Models\Purchase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use Midtrans\Config;
+use Midtrans\Snap;
 
 class PurchaseController extends Controller
 {
+    public function __construct()
+    {
+        Config::$serverKey = config('services.midtrans.server_key');
+        Config::$isProduction = config('services.midtrans.is_production');
+        Config::$isSanitized = config('services.midtrans.is_sanitized');
+        Config::$is3ds = config('services.midtrans.is_3ds');
+    }
+
     public function store(Request $request, $id)
     {
         $user = Auth::user();
+        $course = Course::findOrFail($id);
 
-        // validasi pembayaran user
-        $request->validate([
-            'payment_method' => 'required|in:bank_transfer,e_wallet,qris',
-        ]);
+        // Cek apakah user sudah membeli kelas ini dengan status sukses
+        $existingPurchase = Purchase::where('user_id', $user->id)
+            ->where('course_id', $id)
+            ->where('status', 'success')
+            ->first();
 
-        // Cek apakah sudah beli
-        if (Purchase::where('user_id', $user->id)->where('course_id', $id)->exists()) {
-            return redirect()->route('my-course')->with('info', 'Kamu sudah membeli course ini.');
+        if ($existingPurchase) {
+            return response()->json(['message' => 'Kamu sudah membeli course ini.'], 400);
         }
 
-        Purchase::create([
-            'user_id' => $user->id,
-            'course_id' => $id,
-            'payment_method' => $request->payment_method,
-            'price_paid' => $request->price_paid,
-        ]);
+        // Hitung harga final
+        $discount = $course->price * 0.167; // Logika diskon
+        $finalPrice = $course->price - $discount;
 
-        if ($request->ajax()) {
-            return response()->json(['message' => 'Pembayaran Berhasil']);
+        // ID transaksi unik
+        $referenceId = 'TRX-' . time() . '-' . Str::upper(Str::random(5));
+
+        $purchase = Purchase::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'course_id' => $id,
+                'status' => 'pending'
+            ],
+            [
+                'reference_id' => $referenceId,
+                'payment_method' => null, // reset ke null untuk metode baru
+                'price_paid' => $finalPrice,
+            ]
+        );
+
+        // payload untuk Midtrans
+        $params = [
+            'transaction_details' => [
+                'order_id' => $referenceId,
+                'gross_amount' => (int) $finalPrice,
+            ],
+            'customer_details' => [
+                'first_name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->no_telp ?? '',
+            ],
+            'item_details' => [
+                [
+                    'id' => $course->id,
+                    'price' => (int) $finalPrice,
+                    'quantity' => 1,
+                    'name' => Str::limit($course->title, 45),
+                ]
+            ]
+        ];
+
+        try {
+            // ambil token Snap dari Midtrans
+            $snapToken = Snap::getSnapToken($params);
+            
+            // Simpan token ke database
+            $purchase->update([
+                'snap_token' => $snapToken
+            ]);
+
+            return response()->json([
+                'snap_token' => $snapToken,
+                'reference_id' => $referenceId
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Gagal terhubung ke Midtrans: ' . $e->getMessage()], 500);
         }
-
-        return redirect()->route('my-course')->with('success', 'Pembayaran berhasil!');
-
     }
 
     public function myCourse()
     {
-        $courses = Auth::user()->purchases()->with('course')->get();
+        // course transaksi yang sukses
+        $courses = Auth::user()->purchases()
+            ->where('status', 'success')
+            ->with('course')
+            ->get();
+
         return view('my_course.index', compact('courses'));
     }
 
     public function learn($id){
-        $purchase = Purchase::with('course.courseContents')->where('user_id', Auth::id())
-        ->where('course_id', $id)
-        ->firstOrFail();
+        $purchase = Purchase::with('course.courseContents')
+            ->where('user_id', Auth::id())
+            ->where('course_id', $id)
+            ->where('status', 'success')
+            ->firstOrFail();
 
         return view('my_course.learn', 
         ['course' => $purchase->course,
