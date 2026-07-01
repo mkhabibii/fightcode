@@ -90,3 +90,12 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // Webhook Notification (Harus bisa diakses publik oleh Midtrans)
 Route::post('/payment/callback', [PaymentCallbackController::class, 'handle'])->name('payment.callback');
 
+// Rute sementara untuk menjalankan migrasi database dari browser
+Route::get('/run-migration', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        return 'Migrasi Database Berhasil! Output: <br>' . \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Exception $e) {
+        return 'Gagal melakukan migrasi: ' . $e->getMessage();
+    }
+});
